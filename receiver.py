@@ -4,129 +4,108 @@ import pickle
 import struct
 import sys
 import logging
+from contextlib import closing
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 
-# Named constants for better readability
-PAYLOAD_SIZE = struct.calcsize("L")
-QUIT_CHAR = 'q'
-QUIT_KEY = ord(QUIT_CHAR)
+# Constantes
+HEADER_FORMAT = "!I"  # 4 bytes en orden de red
+HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+QUIT_KEY = ord('q')
 
 def get_local_ip():
-    """Function to get the local IP address."""
+    """Obtiene la IP local conectándose a un servidor público."""
     try:
-        hostname = socket.gethostname()
-        local_ip = socket.gethostbyname(hostname)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        local_ip = s.getsockname()[0]
+        s.close()
         return local_ip
     except Exception as e:
-        logging.error("Error getting local IP address: %s", e)
-        sys.exit(1)
+        logging.error("Error obteniendo la IP local: %s", e)
+        raise
 
 def get_port_from_user():
-    """Function to get the port from the user."""
+    """Solicita el puerto al usuario validando el rango."""
     while True:
         try:
-            port = int(input("Please enter the port you want to use: "))
-            if 1 <= port <= 65535:  # Valid port numbers are between 1 and 65535
+            port = int(input("Ingrese el puerto (1-65535): "))
+            if 1 <= port <= 65535:
                 return port
             else:
-                logging.error("Port number must be between 1 and 65535.")
+                logging.error("El puerto debe estar entre 1 y 65535.")
         except ValueError:
-            logging.error("Invalid port number. Please enter a valid number.")
+            logging.error("Número de puerto inválido.")
 
 def create_server_socket(ip, port):
-    """Function to create the server socket."""
+    """Crea y configura el socket del servidor."""
     try:
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.bind((ip, port))  # Bind to the socket
-        server_socket.listen(5)  # Listen for incoming connections
-        return server_socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind((ip, port))
+        s.listen(5)
+        return s
     except socket.error as e:
-        logging.error("Error creating socket: %s", e)
-        sys.exit(1)
+        logging.error("Error al crear el socket: %s", e)
+        raise
 
-def accept_connection(server_socket):
-    """Function to accept the incoming connection."""
-    try:
-        client_socket, addr = server_socket.accept()
-        return client_socket, addr
-    except socket.error as e:
-        logging.error("Error accepting connection: %s", e)
-        sys.exit(1)
-
-def receive_data(client_socket, size):
-    """Function to receive data from the client socket."""
-    data = b''  # Store the frame data here
-    while len(data) < size:
-        try:
-            packet = client_socket.recv(size - len(data))  # Only receive the remaining bytes
-            if not packet:
-                return None
-            data += packet
-        except socket.error as e:
-            logging.error("Error receiving data: %s", e)
-            sys.exit(1)
+def receive_exact_data(sock, num_bytes):
+    """Recibe exactamente 'num_bytes' desde el socket."""
+    data = b""
+    while len(data) < num_bytes:
+        packet = sock.recv(num_bytes - len(data))
+        if not packet:
+            return None
+        data += packet
     return data
 
-def main():
-    # Get the local IP address and port number
-    local_ip = get_local_ip()
-    logging.info("Your local IP address is: %s", local_ip)
-    port = get_port_from_user()
-    receive_size = True
-
-    # Create the server socket
-    server_socket = create_server_socket(local_ip, port)
-
-    while True:
-        # Accept the incoming connection
-        client_socket, addr = accept_connection(server_socket)
-
+def handle_client(client_socket):
+    """Procesa la conexión de un cliente: recibe y muestra frames."""
+    with client_socket:
         while True:
-            if receive_size:
-                # Receive the message size
-                data = receive_data(client_socket, PAYLOAD_SIZE)
-                if data is None:
-                    logging.info("Connection closed.")
-                    break
-                packed_msg_size = data[:PAYLOAD_SIZE]
-                data = data[PAYLOAD_SIZE:]
-                msg_size = struct.unpack("L", packed_msg_size)[0]
-                receive_size = False  # Only receive the size once
-
-            # Receive the frame data
-            data = receive_data(client_socket, msg_size)
-            if data is None:
-                logging.info("Connection closed.")
+            header_data = receive_exact_data(client_socket, HEADER_SIZE)
+            if header_data is None:
+                logging.info("Cliente desconectado.")
                 break
-            frame_data = data[:msg_size]
-            data = data[msg_size:]
-
-            # Deserialize the frame
+            msg_size = struct.unpack(HEADER_FORMAT, header_data)[0]
+            frame_data = receive_exact_data(client_socket, msg_size)
+            if frame_data is None:
+                logging.info("Desconexión durante la recepción del frame.")
+                break
             try:
                 frame = pickle.loads(frame_data)
-            except pickle.UnpicklingError:
-                logging.error("Error unpickling frame data.")
+            except pickle.UnpicklingError as e:
+                logging.error("Error deserializando frame: %s", e)
                 break
-
-            # Display the frame
-            cv2.imshow('frame', frame)
-
+            cv2.imshow('Frame', frame)
             if cv2.waitKey(1) & 0xFF == QUIT_KEY:
-                break
+                return True  # Indica que se debe salir
+    return False
 
-        # Close the client socket
-        client_socket.close()
-
-    # Close the server socket when no longer needed
+def main():
     try:
-        server_socket.close()
-    except Exception as e:
-        logging.error("Error closing server socket: %s", e)
-
-    # Close the OpenCV window
-    cv2.destroyAllWindows()
+        local_ip = get_local_ip()
+        logging.info("IP local: %s", local_ip)
+    except Exception:
+        sys.exit(1)
+    port = get_port_from_user()
+    try:
+        server_socket = create_server_socket(local_ip, port)
+    except Exception:
+        sys.exit(1)
+    with server_socket:
+        quit_server = False
+        while not quit_server:
+            logging.info("Esperando conexión en %s:%s", local_ip, port)
+            client_socket, addr = server_socket.accept()
+            logging.info("Conexión desde %s", addr)
+            if handle_client(client_socket):
+                quit_server = True
+        cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logging.info("Servidor interrumpido por el usuario.")
+        cv2.destroyAllWindows()
+        sys.exit(0)
