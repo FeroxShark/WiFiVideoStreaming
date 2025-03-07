@@ -1,33 +1,56 @@
 # Wifi Video Streaming
 
-## Description
-This project is a Python implementation of a simple live video transmitter from one device to another over WiFi. It uses the OpenCV library for video handling, and sockets for communication between devices.
+Este repositorio demuestra una solución para transmitir y recibir video vía WiFi. Incluye:
 
-The project is divided into two parts: one for video transmission and another for reception. 
+- **VideoTransmitter** (transmitter.py):
+  - Captura frames de la cámara.
+  - Envía video por socket TCP.
+  - Opciones avanzadas: compresión JPEG, SSL, reintentos de envío, grabación local, multicliente.
 
-The transmitter opens a camera via OpenCV, captures each frame, encodes it into JPEG format to reduce its size, serializes it with pickle, and then sends it over a socket to a receiver device.
+- **VideoReceiver** (receiver.py):
+  - Se conecta al servidor.
+  - Recibe y decodifica los frames.
+  - Incluye reconexiones automáticas, grabación local en partes y visualización de FPS.
 
-The receiver waits for incoming connections, receives the serialized and encoded frame, deserializes it with pickle, decodes it back to its original format, and then displays it on the screen.
+## Requisitos
+Revisa el archivo [requirements.txt](./requirements.txt) para conocer las dependencias necesarias, e instálalas con:
 
-## Requirements
-* Python 3.x
-* OpenCV
-* numpy
-* sockets
+```bash
+pip install -r requirements.txt
+```
 
-## How to use
-1. Clone this repository on your local machine.
-2. Make sure you have the necessary libraries installed.
-3. Run the transmitter script on the device that will act as the video source. You can specify the index of the camera you want to use.
-4. Run the receiver script on the device to which you want to transmit the video.
-5. Enter the IP address and port of the transmitter when prompted.
-6. Enjoy the live video stream.
+## Uso
+1. Ajusta la configuración en los scripts si es necesario (puertos, calidad, etc.).
+2. En el dispositivo transmisor:
+   - Ejecuta `python transmitter.py`.
+   - Se abrirá la cámara y el socket.
+3. En el dispositivo receptor:
+   - Ejecuta `python receiver.py`.
+   - Indica la IP del transmisor y el puerto.
+4. ¡Listo! El receptor debería mostrar el video en tiempo real.
 
-## Warnings
-This is a simple project and is meant to be a proof of concept. It may not be robust enough for serious production use.
+## Características
+- **Transmisor**:
+  - FPS configurable.
+  - Calidad JPEG ajustable.
+  - Grabación local con particionado (chunk_duration).
+  - TLS/SSL opcional.
+  - Varios clientes simultáneos.
 
-## Contributions
-Contributions are welcome. Please fork the repository and propose your changes via a Pull Request.
+- **Receptor**:
+  - Hilo de recepción independiente.
+  - Reintentos de conexión configurables.
+  - Grabación local.
+  - Reconexiones en caso de pérdida de conexión.
+  - Visualización de FPS.
 
-## License
-This project is under the MIT license. Please refer to the `LICENSE` file for more details.
+## Notas
+- Proyecto de ejemplo, no destinado a producción sin mayores controles (seguridad, manejo de errores, etc.).
+- Asegúrate de que tu firewall permita el puerto configurado.
+
+## Contribuciones
+¡Son bienvenidas! Haz un fork y envía un Pull Request.
+
+## Licencia
+Distribuido bajo [MIT License](./LICENSE).
+

@@ -1,0 +1,11 @@
+```
+opencv-python==4.8.0.74
+numpy==1.24.3
+
+# Standard library modules: socket, ssl, struct, sys, logging, threading, time, os, re, etc.
+# are all included with Python, no need to install.
+
+# If you need a specific version of Python:
+# python==3.x
+```
+
